@@ -27,9 +27,7 @@ import * as jwt from 'jsonwebtoken';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
-import { InvitesService } from 'src/invites/invites.service';
 import { EmailService } from 'src/email/email.service';
-import { Role } from 'src/users/enums/role.enum';
 @Injectable()
 export class AuthService {
   private readonly DEFAULT_ACCESS_TOKEN_EXPIRATION = 12 * 60 * 60; // 12 hours to seconds
@@ -42,7 +40,6 @@ export class AuthService {
     @InjectRepository(VerificationEntity)
     private readonly verificationRepository: Repository<VerificationEntity>,
     private readonly jwtService: JwtService,
-    private readonly invitesService: InvitesService,
     private readonly emailService: EmailService,
   ) {
     AWS.config.update({
@@ -60,21 +57,9 @@ export class AuthService {
     if (existingUser) {
       throw new BadRequestException('User alredy exists');
     }
-    const existingInvite = await this.invitesService.findInviteByEmail(
-      userDto.email,
-    );
-    if (!existingInvite) {
-      throw new BadRequestException('No invite found for this email');
-    }
 
     if (userDto.password !== userDto.confirm_password) {
       throw new BadRequestException('Passwords do not match');
-    }
-
-    if (existingInvite.user.role === Role.SUPER_ADMIN) {
-      userDto.role = Role.ADMIN;
-    } else {
-      userDto.role = Role.USER;
     }
 
     const saltRounds = this.randomInteger(10, 14);
@@ -101,8 +86,6 @@ export class AuthService {
       },
       user.id,
     );
-
-    await this.invitesService.acceptInvite(existingInvite.id);
 
     return user;
   }
@@ -430,5 +413,20 @@ export class AuthService {
       throw new BadRequestException('Failed to update password');
     }
     return true;
+  }
+
+  async loginGoogle(user: UsersEntity): Promise<object> {
+    if (!user) {
+      throw new UnauthorizedException('User not found in request');
+    }
+    const existingUser = await this.userService.getUserByEmailVerified(
+      user.email,
+    );
+
+    if (!existingUser) {
+      throw new NotFoundException('User does not exists or is not verified');
+    }
+
+    return this.getSessionTokens(existingUser);
   }
 }

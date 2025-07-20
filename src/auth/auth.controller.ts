@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Get,
   Param,
   Patch,
   Post,
+  Req,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -21,6 +23,8 @@ import { UsersEntity } from 'src/users/entitites/users.entity';
 import { JwtRolesGuard } from './utils/jwt‑roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/users/enums/role.enum';
+import { GoogleAuthGuard } from './utils/google-auth.guard';
+import { Request } from 'express';
 
 @Controller('auth')
 export class AuthController {
@@ -94,5 +98,17 @@ export class AuthController {
     }
 
     return this.authService.getSessionTokens(user);
+  }
+
+  @UseGuards(GoogleAuthGuard)
+  @Get('google/login')
+  async googleLogin(): Promise<void> {}
+
+  @UseGuards(GoogleAuthGuard)
+  @Get('google/callback')
+  async googleLoginCallback(@Req() req: Request): Promise<object> {
+    const user = req.user as UsersEntity;
+
+    return await this.authService.loginGoogle(user);
   }
 }
