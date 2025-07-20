@@ -5,10 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
-import { InvitesModule } from './invites/invites.module';
 import { EmailModule } from './email/email.module';
-import { CompaniesModule } from './companies/companies.module';
-import { EvaluationsModule } from './evaluations/evaluations.module';
 
 @Module({
   imports: [
@@ -33,10 +30,7 @@ import { EvaluationsModule } from './evaluations/evaluations.module';
     }),
     UsersModule,
     AuthModule,
-    InvitesModule,
     EmailModule,
-    CompaniesModule,
-    EvaluationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

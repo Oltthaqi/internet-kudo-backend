@@ -28,6 +28,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import { EmailService } from 'src/email/email.service';
+import { CreateUserGoogleDto } from 'src/users/dto/create-user-google-oauth.dto';
 @Injectable()
 export class AuthService {
   private readonly DEFAULT_ACCESS_TOKEN_EXPIRATION = 12 * 60 * 60; // 12 hours to seconds
@@ -428,5 +429,14 @@ export class AuthService {
     }
 
     return this.getSessionTokens(existingUser);
+  }
+
+  async validateGoogleUser(
+    googleUser: CreateUserGoogleDto,
+  ): Promise<UsersEntity> {
+    const user = await this.userService.getUserByEmail(googleUser.email);
+
+    if (user) return user;
+    return await this.userService.register(googleUser);
   }
 }

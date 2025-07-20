@@ -6,7 +6,6 @@ import { VerificationEntity } from './entitites/verification.entity';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { UsersService } from './users.service';
-import { EvaluationsEntity } from 'src/evaluations/entities/evaluation.entity';
 @Module({
   imports: [
     HttpModule.register({
@@ -14,7 +13,6 @@ import { EvaluationsEntity } from 'src/evaluations/entities/evaluation.entity';
     }),
     ConfigModule.forRoot(),
     TypeOrmModule.forFeature([UsersEntity, VerificationEntity]),
-    EvaluationsEntity,
   ],
   controllers: [UsersController],
   providers: [UsersService],

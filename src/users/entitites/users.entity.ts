@@ -10,10 +10,7 @@ import {
 import { Gender } from '../enums/gender.enum';
 import { VerificationEntity } from './verification.entity';
 import { Status } from 'src/common/enums/status.enum';
-import { CompaniesEntity } from 'src/companies/entitites/companies.entity';
 import { Role } from '../enums/role.enum';
-import { InvitesEntity } from 'src/invites/entities/invite.entity';
-import { EvaluationsEntity } from 'src/evaluations/entities/evaluation.entity';
 
 @Entity({ name: 'users' })
 export class UsersEntity {
@@ -107,18 +104,4 @@ export class UsersEntity {
     enum: Role,
   })
   role: Role;
-
-  @OneToMany(() => CompaniesEntity, (company) => company.user, {
-    cascade: true,
-  })
-  companies: CompaniesEntity[];
-
-  @OneToMany(() => InvitesEntity, (invite) => invite.user)
-  invites: InvitesEntity[];
-
-  @OneToMany(() => EvaluationsEntity, (evaluation) => evaluation.user)
-  @ApiProperty({
-    description: 'Evaluations performed by this user',
-  })
-  evaluations: EvaluationsEntity[];
 }
