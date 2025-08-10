@@ -1,7 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { DestinationsService } from './destinations.service';
 
-@Controller('api/esim/destinations')
+@Controller('esim/destinations')
 export class DestinationsController {
   constructor(private readonly svc: DestinationsService) {}
 
@@ -10,5 +10,14 @@ export class DestinationsController {
   @Get()
   lokale() {
     return this.svc.getDestinations();
+  }
+
+  @Get('country/:iso2/packages')
+  byCountry(@Param('iso2') iso2: string) {
+    return this.svc.getPackagesByCountry(iso2.toLowerCase());
+  }
+  @Get('region/:zoneId/packages')
+  byRegion(@Param('zoneId') zoneId: string) {
+    return this.svc.getPackagesByRegion(Number(zoneId));
   }
 }
