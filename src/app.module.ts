@@ -7,6 +7,11 @@ import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { OcsModule } from './ocs/ocs.module';
+import { EsimsModule } from './esims/esims.module';
+import { LocationZoneModule } from './location-zone/location-zone.module';
+import { PackageTemplateModule } from './package-template/package-template.module';
+import { DestinationsModule } from './destinations/destinations.module';
 
 @Module({
   imports: [
@@ -33,6 +38,11 @@ import { NotificationsModule } from './notifications/notifications.module';
     AuthModule,
     EmailModule,
     NotificationsModule,
+    OcsModule,
+    EsimsModule,
+    LocationZoneModule,
+    PackageTemplateModule,
+    DestinationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
