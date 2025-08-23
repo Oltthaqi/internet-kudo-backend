@@ -12,6 +12,8 @@ import { EsimsModule } from './esims/esims.module';
 import { LocationZoneModule } from './location-zone/location-zone.module';
 import { PackageTemplateModule } from './package-template/package-template.module';
 import { DestinationsModule } from './destinations/destinations.module';
+import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -43,6 +45,8 @@ import { DestinationsModule } from './destinations/destinations.module';
     LocationZoneModule,
     PackageTemplateModule,
     DestinationsModule,
+    OrdersModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

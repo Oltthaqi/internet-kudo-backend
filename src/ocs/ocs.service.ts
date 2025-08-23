@@ -1,9 +1,9 @@
 import { HttpService } from '@nestjs/axios';
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
 
 @Injectable()
-export class OcsService implements OnModuleInit {
+export class OcsService {
   private base = (process.env.OCS_BASE_URL || '').trim();
   private token = (process.env.OCS_TOKEN || '').trim();
   private url = ''; // final URL with token

@@ -73,6 +73,27 @@ export class PackageTemplatesService {
     };
   }
 
+  async findOne(id: string): Promise<PackageTemplate | null> {
+    return await this.pkgRepo.findOne({
+      where: { id },
+    });
+  }
+
+  async findByTemplateId(
+    packageTemplateId: string,
+  ): Promise<PackageTemplate | null> {
+    return await this.pkgRepo.findOne({
+      where: { packageTemplateId },
+    });
+  }
+
+  async findAll(): Promise<PackageTemplate[]> {
+    return await this.pkgRepo.find({
+      relations: ['zone'],
+      order: { packageTemplateName: 'ASC' },
+    });
+  }
+
   async syncFromOcs(resellerId: number) {
     const payload = { listPrepaidPackageTemplate: { resellerId } };
     const res = await this.ocs.post<{

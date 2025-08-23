@@ -43,6 +43,8 @@ export class AuthController {
     @Param('user_id') user_id: string,
     @Body() verifyUserDto: VerifyUserDto,
   ): Promise<boolean> {
+    console.log('Verifying user:', user_id);
+
     return await this.authService.verifyUser(user_id, verifyUserDto);
   }
 

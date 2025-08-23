@@ -15,5 +15,6 @@ import { LocationZone } from 'src/location-zone/entities/location-zone.entity';
   ],
   controllers: [PackageTemplatesController],
   providers: [PackageTemplatesService],
+  exports: [PackageTemplatesService],
 })
 export class PackageTemplateModule {}
