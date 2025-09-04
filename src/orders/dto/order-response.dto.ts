@@ -26,6 +26,35 @@ export class OrderResponseDto {
   })
   packageTemplateId: string;
 
+  @ApiPropertyOptional({
+    description: 'Package template details',
+    type: 'object',
+    properties: {
+      packageTemplateId: { type: 'string', example: '12345' },
+      packageTemplateName: { type: 'string', example: 'USA 7-Day 5GB' },
+      zoneName: { type: 'string', example: 'United States' },
+      countriesIso2: {
+        type: 'array',
+        items: { type: 'string' },
+        example: ['US'],
+      },
+      periodDays: { type: 'number', example: 7 },
+      volume: { type: 'string', example: '5GB' },
+      price: { type: 'number', example: 25.99 },
+      currency: { type: 'string', example: 'USD' },
+    },
+  })
+  packageTemplate?: {
+    packageTemplateId: string;
+    packageTemplateName: string;
+    zoneName: string;
+    countriesIso2: string[] | null;
+    periodDays: number | null;
+    volume: string | null;
+    price: number | null;
+    currency: string | null;
+  };
+
   @ApiProperty({
     description: 'Type of order',
     enum: OrderType,

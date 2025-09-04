@@ -279,7 +279,7 @@ export class OrdersService {
 
     const orders = await this.orderRepository.find({
       where: { userId },
-      relations: ['user', 'packageTemplate'],
+      relations: ['packageTemplate'],
       order: { createdAt: 'DESC' },
     });
 
@@ -546,6 +546,18 @@ export class OrdersService {
       orderNumber: order.orderNumber,
       userId: order.userId,
       packageTemplateId: order.packageTemplateId,
+      packageTemplate: order.packageTemplate
+        ? {
+            packageTemplateId: order.packageTemplate.packageTemplateId,
+            packageTemplateName: order.packageTemplate.packageTemplateName,
+            zoneName: order.packageTemplate.zoneName,
+            countriesIso2: order.packageTemplate.countriesIso2,
+            periodDays: order.packageTemplate.periodDays,
+            volume: order.packageTemplate.volume,
+            price: order.packageTemplate.price,
+            currency: order.packageTemplate.currency,
+          }
+        : undefined,
       orderType: order.orderType,
       status: order.status,
       amount: order.amount,
