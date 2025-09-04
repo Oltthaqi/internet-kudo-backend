@@ -273,6 +273,19 @@ export class OrdersService {
     return orders.map((order) => this.toResponseDto(order));
   }
 
+  async getOrdersByUserId(userId: string): Promise<OrderResponseDto[]> {
+    // Validate that user exists
+    await this.usersService.getUserById(userId);
+
+    const orders = await this.orderRepository.find({
+      where: { userId },
+      relations: ['user', 'packageTemplate'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return orders.map((order) => this.toResponseDto(order));
+  }
+
   async findOne(id: string): Promise<Order> {
     const order = await this.orderRepository.findOne({
       where: { id },

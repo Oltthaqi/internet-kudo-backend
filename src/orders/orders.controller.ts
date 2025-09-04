@@ -9,6 +9,7 @@ import {
   UseGuards,
   Request,
   BadRequestException,
+  Req,
 } from '@nestjs/common';
 import { Request as ExpressRequest } from 'express';
 import {
@@ -67,6 +68,26 @@ export class OrdersController {
     }
 
     return this.ordersService.create(userId, createOrderDto);
+  }
+
+  @ApiOperation({ summary: 'Get orders for current authenticated user' })
+  @ApiResponse({
+    status: 200,
+    description: 'Orders retrieved successfully',
+    type: [OrderResponseDto],
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  @Get('my-orders')
+  @Roles(Role.USER, Role.ADMIN)
+  async getMyOrders(@Req() req: any): Promise<OrderResponseDto[]> {
+    const userId = req.user.uuid;
+
+    if (!userId) {
+      throw new BadRequestException('User ID not found in JWT token');
+    }
+
+    return this.ordersService.getOrdersByUserId(userId);
   }
 
   @ApiOperation({ summary: 'Get all orders' })
