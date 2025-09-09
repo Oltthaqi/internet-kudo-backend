@@ -266,14 +266,11 @@ export class UsageService {
       this.logger.log(`Syncing usage for subscriber ${usage.subscriberId}`);
 
       // Get usage data from OCS API
-      const currentDate = new Date();
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(currentDate.getDate() - 7);
+      const usageData = await this.getUsageFromOcs(usage.subscriberId);
 
-      const usageData = await this.getUsageFromOcs(
-        usage.subscriberId,
-        sevenDaysAgo.toISOString().split('T')[0],
-        currentDate.toISOString().split('T')[0],
+      this.logger.log(
+        `OCS Response for subscriber ${usage.subscriberId}:`,
+        JSON.stringify(usageData, null, 2),
       );
 
       // Update usage record with OCS data
@@ -301,24 +298,33 @@ export class UsageService {
   /**
    * Get real-time usage for a subscriber from OCS API
    */
-  private async getUsageFromOcs(
-    subscriberId: number,
-    startDate: string,
-    endDate: string,
-  ): Promise<any> {
-    const requestBody = {
-      subscriberUsageOverPeriod: {
-        subscriber: {
+  private async getUsageFromOcs(subscriberId: number): Promise<any> {
+    // Get both package data and usage data
+    const [packagesResponse, usageResponse] = await Promise.all([
+      this.ocsService.post({
+        listSubscriberPrepaidPackages: {
           subscriberId,
         },
-        period: {
-          start: startDate,
-          end: endDate,
-        },
-      },
-    };
+      }),
+      this.ocsService
+        .post({
+          subscriberUsageOverPeriod: {
+            subscriber: {
+              subscriberId,
+            },
+            period: {
+              start: new Date().toISOString().split('T')[0],
+              end: new Date().toISOString().split('T')[0],
+            },
+          },
+        })
+        .catch(() => null), // Don't fail if usage API fails
+    ]);
 
-    return await this.ocsService.post(requestBody);
+    return {
+      packages: packagesResponse,
+      usage: usageResponse,
+    };
   }
 
   /**
@@ -328,10 +334,16 @@ export class UsageService {
     usage: Usage,
     ocsData: any,
   ): Promise<void> {
-    const usageData = ocsData?.subscriberUsageOverPeriod;
-    if (!usageData || !usageData.usages || usageData.usages.length === 0) {
+    const packagesData = ocsData?.packages?.listSubscriberPrepaidPackages;
+    const usageData = ocsData?.usage?.subscriberUsageOverPeriod;
+
+    if (
+      !packagesData ||
+      !packagesData.packages ||
+      packagesData.packages.length === 0
+    ) {
       this.logger.warn(
-        `No usage data found for subscriber ${usage.subscriberId}`,
+        `No packages found for subscriber ${usage.subscriberId}`,
       );
       await this.usageRepository.update(usage.id, {
         lastSyncedAt: new Date(),
@@ -340,75 +352,155 @@ export class UsageService {
       return;
     }
 
-    const subscriberUsage = usageData.usages[0];
-    const totalUsage = subscriberUsage.total;
+    // Find the specific package that matches our order
+    // We need to match by package template ID or subsPackageId
+    const order = await this.ordersService.getOrderForUsageTracking(
+      usage.orderId,
+    );
 
-    // Calculate data usage (type 33 = DATA)
-    const dataUsageBytes = totalUsage?.quantityPerType?.['33'] || 0;
-    const totalCallDuration = totalUsage?.quantityPerType?.['1'] || 0; // MOC calls
+    this.logger.log(
+      `Looking for package match for order ${usage.orderId}: subsPackageId=${order.subsPackageId} (type: ${typeof order.subsPackageId}), packageTemplateId=${order.packageTemplate?.packageTemplateId}`,
+    );
+    this.logger.log(
+      `Available packages: ${JSON.stringify(
+        packagesData.packages.map((pkg: any) => ({
+          id: pkg.subscriberprepaidpackageid,
+          templateId: pkg.packageTemplate?.prepaidpackagetemplateid,
+          usedData: pkg.useddatabyte,
+          limit: pkg.pckdatabyte,
+          active: pkg.active,
+          tsassigned: pkg.tsassigned,
+        })),
+        null,
+        2,
+      )}`,
+    );
+
+    const targetPackage = packagesData.packages.find((pkg: any) => {
+      // Prioritize subsPackageId match (most accurate)
+      if (
+        order.subsPackageId &&
+        pkg.subscriberprepaidpackageid ===
+          parseInt(order.subsPackageId.toString(), 10)
+      ) {
+        this.logger.log(
+          `Found exact match by subsPackageId: ${pkg.subscriberprepaidpackageid} (order: ${order.subsPackageId})`,
+        );
+        return true;
+      }
+
+      // If no subsPackageId, try to match by package template AND order creation date
+      if (
+        !order.subsPackageId &&
+        pkg.packageTemplate?.prepaidpackagetemplateid ===
+          parseInt(order.packageTemplate?.packageTemplateId || '0', 10)
+      ) {
+        // Check if the package was assigned around the same time as the order
+        const packageAssignedDate = new Date(pkg.tsassigned);
+        const orderCreatedDate = new Date(order.createdAt);
+        const timeDiff = Math.abs(
+          packageAssignedDate.getTime() - orderCreatedDate.getTime(),
+        );
+        const hoursDiff = timeDiff / (1000 * 60 * 60);
+
+        this.logger.log(
+          `Checking package template match: ${pkg.packageTemplate?.prepaidpackagetemplateid}, packageAssigned=${pkg.tsassigned}, orderCreated=${order.createdAt}, hoursDiff=${hoursDiff.toFixed(2)}`,
+        );
+
+        // If the package was assigned within 2 hours of order creation, it's likely the right one
+        if (hoursDiff <= 2) {
+          this.logger.log(
+            `Found match by package template and timing: ${pkg.subscriberprepaidpackageid}`,
+          );
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (!targetPackage) {
+      this.logger.warn(
+        `No matching package found for order ${usage.orderId} in subscriber ${usage.subscriberId} packages`,
+      );
+      await this.usageRepository.update(usage.id, {
+        lastSyncedAt: new Date(),
+        lastOcsResponse: ocsData,
+      });
+      return;
+    }
+
+    this.logger.log(
+      `Selected package ${targetPackage.subscriberprepaidpackageid}: usedData=${targetPackage.useddatabyte}, limit=${targetPackage.pckdatabyte}, active=${targetPackage.active}, tsassigned=${targetPackage.tsassigned}`,
+    );
+
+    // Extract usage data from the specific package
+    const packageUsage = {
+      useddatabyte: targetPackage.useddatabyte || 0,
+      usedmocsecond: targetPackage.usedmocsecond || 0,
+      usedmtcsecond: targetPackage.usedmtcsecond || 0,
+      usedmosmsnumber: targetPackage.usedmosmsnumber || 0,
+      usedmtsmsnumber: targetPackage.usedmtsmsnumber || 0,
+      pckdatabyte: targetPackage.pckdatabyte || 0,
+      tsactivationutc: targetPackage.tsactivationutc,
+      tsexpirationutc: targetPackage.tsexpirationutc,
+    };
+
+    // Calculate data usage from package-specific data
+    const dataUsageBytes = packageUsage.useddatabyte;
+    const totalCallDuration =
+      packageUsage.usedmocsecond + packageUsage.usedmtcsecond;
     const totalSmsCount =
-      (totalUsage?.quantityPerType?.['21'] || 0) +
-      (totalUsage?.quantityPerType?.['22'] || 0); // MO + MT SMS
+      packageUsage.usedmosmsnumber + packageUsage.usedmtsmsnumber;
 
-    // Get country and operator info from latest usage
+    // Get package activation and expiration dates
+    let firstUsageDate = usage.firstUsageDate;
+    let lastUsageDate = usage.lastUsageDate;
+    let packageStartDate = usage.packageStartDate;
+    let packageEndDate = usage.packageEndDate;
+
+    if (packageUsage.tsactivationutc) {
+      packageStartDate = new Date(packageUsage.tsactivationutc);
+      if (!firstUsageDate) {
+        firstUsageDate = packageStartDate;
+      }
+    }
+
+    if (packageUsage.tsexpirationutc) {
+      packageEndDate = new Date(packageUsage.tsexpirationutc);
+    }
+
+    // For now, we don't have country/operator info from packages API
     let lastUsageCountry: string | null = null;
     let lastUsageMcc: number | null = null;
     let lastUsageMnc: number | null = null;
     let lastUsageOperator: string | null = null;
-    let firstUsageDate = usage.firstUsageDate;
-    let lastUsageDate = usage.lastUsageDate;
 
-    if (
-      totalUsage?.quantityPerCountry &&
-      totalUsage.quantityPerCountry.length > 0
-    ) {
-      const countryData = totalUsage.quantityPerCountry[0];
-      lastUsageCountry = countryData.alpha2;
-      lastUsageMcc = countryData.mcc;
+    // Calculate remaining data using package-specific limit
+    const packageDataLimit = packageUsage.pckdatabyte;
+    const totalDataRemaining = Math.max(0, packageDataLimit - dataUsageBytes);
 
-      if (
-        countryData.quantityPerOperator &&
-        countryData.quantityPerOperator.length > 0
-      ) {
-        const operatorData = countryData.quantityPerOperator[0];
-        lastUsageMnc = operatorData.mnc;
-        lastUsageOperator = operatorData.name;
-      }
+    // Extract cost data from usage API if available
+    let totalResellerCost = 0;
+    let totalSubscriberCost = 0;
+    if (usageData?.total) {
+      totalResellerCost = usageData.total.resellerCost || 0;
+      totalSubscriberCost = usageData.total.subscriberCost || 0;
     }
-
-    // Get first and last usage dates from detailed usage
-    if (subscriberUsage.subsPeriodUsages) {
-      for (const periodUsage of subscriberUsage.subsPeriodUsages) {
-        if (periodUsage.subsDailyUsages) {
-          for (const dailyUsage of periodUsage.subsDailyUsages) {
-            const usageDate = new Date(dailyUsage.usageDateUtc);
-            if (!firstUsageDate || usageDate < firstUsageDate) {
-              firstUsageDate = usageDate;
-            }
-            if (!lastUsageDate || usageDate > lastUsageDate) {
-              lastUsageDate = usageDate;
-            }
-          }
-        }
-      }
-    }
-
-    // Calculate remaining data
-    const totalDataRemaining = Math.max(
-      0,
-      usage.totalDataAllowed - dataUsageBytes,
-    );
 
     // Update usage record
     await this.usageRepository.update(usage.id, {
       totalDataUsed: dataUsageBytes,
+      totalDataAllowed: packageDataLimit, // Update with package-specific limit
       totalDataRemaining,
       totalCallDuration,
       totalSmsCount,
-      totalResellerCost: totalUsage?.resellerCost || 0,
-      totalSubscriberCost: totalUsage?.subscriberCost || 0,
+      totalResellerCost,
+      totalSubscriberCost,
       firstUsageDate,
       lastUsageDate,
+      packageStartDate,
+      packageEndDate,
       lastUsageCountry,
       lastUsageMcc,
       lastUsageMnc,
@@ -421,14 +513,14 @@ export class UsageService {
     });
 
     this.logger.log(
-      `Updated usage for subscriber ${usage.subscriberId}: ${this.formatBytes(dataUsageBytes)}/${this.formatBytes(usage.totalDataAllowed)} used`,
+      `Updated usage for subscriber ${usage.subscriberId}: ${this.formatBytes(dataUsageBytes)}/${this.formatBytes(packageDataLimit)} used`,
     );
   }
 
   /**
    * Cron job to sync usage for all active subscriptions every hour
    */
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron(CronExpression.EVERY_5_MINUTES)
   async syncAllActiveUsage(): Promise<void> {
     this.logger.log(
       'Starting scheduled usage sync for all active subscriptions',

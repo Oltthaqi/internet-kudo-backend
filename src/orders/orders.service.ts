@@ -468,7 +468,21 @@ export class OrdersService {
     const savedOrder = (await this.orderRepository.save(
       order,
     )) as unknown as Order;
-    return this.toResponseDto(savedOrder);
+
+    // Process the top-up order immediately (no payment required)
+    try {
+      await this.processTopup(savedOrder.id);
+      // Reload the order to get updated status
+      const updatedOrder = await this.orderRepository.findOne({
+        where: { id: savedOrder.id },
+        relations: ['packageTemplate'],
+      });
+      return this.toResponseDto(updatedOrder!);
+    } catch (error) {
+      console.error('Failed to process top-up order:', error);
+      // Return the order even if processing failed
+      return this.toResponseDto(savedOrder);
+    }
   }
 
   /**
@@ -654,7 +668,7 @@ export class OrdersService {
         subscriber: {
           subscriberId: parseInt(String(order.subscriberId || '0'), 10),
         },
-        reportUnitsPreviousPackage: true, // Carry over remaining data
+        // Removed reportUnitsPreviousPackage - not a valid OCS API field
       },
     };
 
