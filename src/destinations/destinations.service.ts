@@ -109,7 +109,8 @@ export class DestinationsService {
     const rawPkgs = await this.packageTemplateRepo
       .createQueryBuilder('p')
       .select([
-        'p.packageTemplateId AS id',
+        'p.id AS id',
+        'p.packageTemplateId AS packageTemplateId',
         'p.packageTemplateName AS name',
         'p.price AS price',
         'p.currency AS currency',
@@ -127,6 +128,7 @@ export class DestinationsService {
         if (!z) return null;
         return {
           id: String(r.id),
+          packageTemplateId: String(r.packageTemplateId),
           title: r.name,
           price: r.price != null ? Number(r.price) : null,
           currency: r.currency ?? 'EUR',
