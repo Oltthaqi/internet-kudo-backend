@@ -4,6 +4,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Cron } from '@nestjs/schedule';
 import { PackageTemplate } from './entities/package-template.entity';
 import { LocationZoneService } from '../location-zone/location-zone.service';
 import { OcsService } from 'src/ocs/ocs.service';
@@ -13,10 +14,7 @@ import {
   PackageTemplateDetailsResponseDto,
   CountryOperatorDto,
 } from './dto/package-template-details.dto';
-import {
-  ListDetailedLocationZoneResponseDto,
-  DetailedLocationZoneDto,
-} from '../location-zone/dto/list-detailed-location-zone.dto';
+import { ListDetailedLocationZoneResponseDto } from '../location-zone/dto/list-detailed-location-zone.dto';
 
 type Raw = Record<string, any>;
 interface Normalized {
@@ -238,5 +236,24 @@ export class PackageTemplatesService {
       numberOfCountries: countries.length,
       countries: countries,
     };
+  }
+
+  /**
+   * Cron job to sync packages from OCS every 24 hours at 12 AM
+   */
+  @Cron('0 0 * * *') // Every day at 12:00 AM
+  async syncPackagesFromOcsScheduled(): Promise<void> {
+    this.logger.log('Starting scheduled packages sync from OCS');
+
+    try {
+      // Use a default reseller ID for scheduled sync
+      // You might want to make this configurable via environment variables
+      const defaultResellerId = 1;
+      await this.syncFromOcs(defaultResellerId);
+
+      this.logger.log('Completed scheduled packages sync from OCS');
+    } catch (error) {
+      this.logger.error('Failed to sync packages from OCS:', error);
+    }
   }
 }

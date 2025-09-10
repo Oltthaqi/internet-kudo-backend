@@ -1,7 +1,8 @@
 // zones.service.ts
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm'; // <- add In
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { LocationZone } from './entities/location-zone.entity';
 import { OcsService } from 'src/ocs/ocs.service';
 import {
@@ -22,6 +23,8 @@ interface OcsLocationZone {
 
 @Injectable()
 export class LocationZoneService {
+  private readonly logger = new Logger(LocationZoneService.name);
+
   constructor(
     @InjectRepository(LocationZone)
     private readonly zoneRepo: Repository<LocationZone>,
@@ -112,5 +115,26 @@ export class LocationZoneService {
       await this.ocs.post<ListDetailedLocationZoneResponseDto>(payload);
 
     return response.listDetailedLocationZone || [];
+  }
+
+  /**
+   * Cron job to sync zones from OCS every 24 hours at 12 AM
+   */
+  @Cron('0 0 * * *') // Every day at 12:00 AM
+  async syncZonesFromOcsScheduled(): Promise<void> {
+    this.logger.log('Starting scheduled zones sync from OCS');
+
+    try {
+      // Use a default reseller ID for scheduled sync
+      // You might want to make this configurable via environment variables
+      const defaultResellerId = 1;
+      const result = await this.syncFromOcs(defaultResellerId);
+
+      this.logger.log(
+        `Completed scheduled zones sync: ${result.saved} zones saved`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to sync zones from OCS:', error);
+    }
   }
 }
