@@ -8,6 +8,7 @@ import { PackageTemplateModule } from '../package-template/package-template.modu
 import { UsersModule } from '../users/users.module';
 import { EsimsModule } from '../esims/esims.module';
 import { UsageModule } from '../usage/usage.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { UsageModule } from '../usage/usage.module';
     PackageTemplateModule,
     UsersModule,
     EsimsModule,
+    EmailModule,
     forwardRef(() => UsageModule),
   ],
   controllers: [OrdersController],

@@ -9,7 +9,10 @@ import {
   UseGuards,
   Request,
   BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request as ExpressRequest } from 'express';
 import {
   ApiTags,
@@ -364,5 +367,72 @@ export class OrdersController {
   async processTopup(@Param('id') id: string) {
     await this.ordersService.processTopup(id);
     return { message: 'Top-up processing initiated' };
+  }
+
+  @ApiOperation({ summary: 'Set logo URL for email templates' })
+  @ApiResponse({ status: 200, description: 'Logo URL set successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Post('email/logo')
+  @Roles(Role.ADMIN)
+  async setEmailLogo(@Body() body: { logoUrl: string }) {
+    await this.ordersService.setEmailLogo(body.logoUrl);
+    return { message: 'Logo URL set successfully', logoUrl: body.logoUrl };
+  }
+
+  @ApiOperation({ summary: 'Test QR code generation' })
+  @ApiResponse({ status: 200, description: 'QR code test completed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Post('email/test-qr')
+  @Roles(Role.ADMIN)
+  async testQrCode(@Body() body: { qrText: string; email: string }) {
+    await this.ordersService.testQrCodeGeneration(body.qrText, body.email);
+    return { message: 'QR code test email sent' };
+  }
+
+  @ApiOperation({ summary: 'Debug QR code generation' })
+  @ApiResponse({ status: 200, description: 'QR code debug info' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Get('email/debug-qr')
+  @Roles(Role.ADMIN)
+  async debugQrCode() {
+    return await this.ordersService.debugQrCodeGeneration();
+  }
+
+  @ApiOperation({ summary: 'Generate test HTML with QR code' })
+  @ApiResponse({ status: 200, description: 'Test HTML generated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Get('email/test-html')
+  @Roles(Role.ADMIN)
+  async testHtml() {
+    return await this.ordersService.generateTestHtml();
+  }
+
+  @ApiOperation({ summary: 'Upload logo for email templates' })
+  @ApiResponse({ status: 200, description: 'Logo uploaded successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Post('email/upload-logo')
+  @UseInterceptors(FileInterceptor('logo'))
+  @Roles(Role.ADMIN)
+  async uploadLogo(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('File must be an image');
+    }
+
+    // Convert file to base64 data URL
+    const base64 = file.buffer.toString('base64');
+    const dataUrl = `data:${file.mimetype};base64,${base64}`;
+
+    await this.ordersService.setEmailLogo(dataUrl);
+
+    return {
+      message: 'Logo uploaded successfully',
+      logoSize: file.size,
+      logoType: file.mimetype,
+      logoUrl: dataUrl.substring(0, 100) + '...',
+    };
   }
 }

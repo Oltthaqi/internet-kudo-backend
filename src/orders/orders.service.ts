@@ -17,6 +17,7 @@ import { OcsService } from '../ocs/ocs.service';
 import { PackageTemplatesService } from '../package-template/package-template.service';
 import { UsersService } from '../users/users.service';
 import { EsimAllocationService } from '../esims/esim-allocation.service';
+import { EmailService } from '../email/email.service';
 import { UsageService } from '../usage/usage.service';
 import { Usage } from '../usage/entities/usage.entity';
 
@@ -29,6 +30,7 @@ export class OrdersService {
     private readonly packageTemplateService: PackageTemplatesService,
     private readonly usersService: UsersService,
     private readonly esimAllocationService: EsimAllocationService,
+    private readonly emailService: EmailService,
     @Inject(forwardRef(() => UsageService))
     private readonly usageService: UsageService,
   ) {}
@@ -37,6 +39,7 @@ export class OrdersService {
     userId: string,
     createOrderDto: CreateOrderDto,
   ): Promise<OrderResponseDto> {
+    console.log('🔍 Creating order for user:', userId);
     if (!userId) {
       throw new BadRequestException('User ID is required but not provided');
     }
@@ -125,6 +128,18 @@ export class OrdersService {
         );
         // Don't throw error here as order is already completed successfully
       }
+
+      // Send order completion email
+      try {
+        await this.sendOrderCompletionEmail(orderId);
+        console.log(`✅ Order completion email sent for order ${orderId}`);
+      } catch (error) {
+        console.log(
+          `⚠️ Failed to send order completion email for order ${orderId}:`,
+          error.message,
+        );
+        // Don't throw error here as order is already completed successfully
+      }
     } catch (error) {
       // Update status to failed with error details
       await this.orderRepository.update(orderId, {
@@ -148,6 +163,17 @@ export class OrdersService {
       // Extract response data and update order
       const ocsResponseData = (response as any)?.affectPackageToSubscriber;
       if (ocsResponseData) {
+        // Generate QR code if not provided by OCS
+        let qrCodeUrl = ocsResponseData.urlQrCode;
+        if (
+          !qrCodeUrl &&
+          ocsResponseData.activationCode &&
+          ocsResponseData.smdpServer
+        ) {
+          qrCodeUrl = `LPA:1$${ocsResponseData.smdpServer}$${ocsResponseData.activationCode}`;
+          console.log('🔧 Generated QR code from OCS response:', qrCodeUrl);
+        }
+
         await this.orderRepository.update(order.id, {
           ocsResponse: response as any,
           subscriberId: ocsResponseData.subscriberId,
@@ -157,10 +183,13 @@ export class OrdersService {
           smdpServer: ocsResponseData.smdpServer,
           activationCode:
             ocsResponseData.activationCode || order.activationCode,
-          urlQrCode: ocsResponseData.urlQrCode,
+          urlQrCode: qrCodeUrl,
           userSimName: ocsResponseData.userSimName,
         });
-        console.log('✅ eSIM activation details saved');
+        console.log(
+          '✅ eSIM activation details saved with QR code:',
+          qrCodeUrl,
+        );
       } else {
         console.log('❌ No affectPackageToSubscriber data in response');
         throw new BadRequestException('OCS API returned empty response');
@@ -643,13 +672,27 @@ export class OrdersService {
       // Extract response data
       const topupResponse = (response as any).affectPackageToSubscriber || {};
 
+      // Generate QR code if not provided by OCS
+      let qrCodeUrl = topupResponse.urlQrCode;
+      if (
+        !qrCodeUrl &&
+        topupResponse.activationCode &&
+        topupResponse.smdpServer
+      ) {
+        qrCodeUrl = `LPA:1$${topupResponse.smdpServer}$${topupResponse.activationCode}`;
+        console.log(
+          '🔧 Generated QR code for top-up from OCS response:',
+          qrCodeUrl,
+        );
+      }
+
       // Update order with success data
       await this.orderRepository.update(orderId, {
         status: OrderStatus.COMPLETED,
         subsPackageId: topupResponse.subsPackageId?.toString(),
         esimId: topupResponse.esimId?.toString(),
         smdpServer: topupResponse.smdpServer,
-        urlQrCode: topupResponse.urlQrCode,
+        urlQrCode: qrCodeUrl,
         userSimName: topupResponse.userSimName,
         iccid: topupResponse.iccid,
         activationCode: topupResponse.activationCode,
@@ -663,6 +706,20 @@ export class OrdersService {
       } catch (error) {
         console.log(
           `⚠️ Failed to create usage record for top-up order ${orderId}:`,
+          error.message,
+        );
+        // Don't throw error here as top-up is already completed successfully
+      }
+
+      // Send order completion email for top-up
+      try {
+        await this.sendOrderCompletionEmail(orderId);
+        console.log(
+          `✅ Order completion email sent for top-up order ${orderId}`,
+        );
+      } catch (error) {
+        console.log(
+          `⚠️ Failed to send order completion email for top-up order ${orderId}:`,
           error.message,
         );
         // Don't throw error here as top-up is already completed successfully
@@ -993,5 +1050,178 @@ export class OrdersService {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
     };
+  }
+
+  private async sendOrderCompletionEmail(orderId: string): Promise<void> {
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+      relations: ['user', 'packageTemplate'],
+    });
+
+    if (!order || !order.user || !order.packageTemplate) {
+      throw new Error('Order, user, or package template not found');
+    }
+
+    // Generate QR code if not available
+    let qrCodeUrl = order.urlQrCode;
+
+    if (!qrCodeUrl && order.activationCode && order.smdpServer) {
+      // Generate QR code from available data
+      qrCodeUrl = `LPA:1$${order.smdpServer}$${order.activationCode}`;
+      console.log('🔧 Generated QR code from activation data:', qrCodeUrl);
+
+      // Update the order with the generated QR code
+      await this.orderRepository.update(orderId, {
+        urlQrCode: qrCodeUrl,
+      });
+    }
+
+    if (!qrCodeUrl) {
+      console.log('⚠️ No QR code available for order:', orderId);
+      console.log('Order data:', {
+        activationCode: order.activationCode,
+        smdpServer: order.smdpServer,
+        urlQrCode: order.urlQrCode,
+      });
+      throw new Error('QR code URL not available for this order');
+    }
+
+    const orderData = {
+      orderNumber: order.orderNumber,
+      packageName: order.packageTemplate.packageTemplateName,
+      dataVolume: order.packageTemplate.volume || 'N/A',
+      validityDays:
+        order.packageTemplate.periodDays || order.validityPeriod || 0,
+      amount: order.amount,
+      currency: order.currency,
+      qrCodeUrl: undefined, // Let email service generate QR code image
+      qrCodeText: qrCodeUrl, // Pass the QR code text for generation
+      logoUrl: this.emailService.getLogoUrl(), // Get logo from email service
+    };
+
+    console.log('📧 Sending order completion email with QR code:', qrCodeUrl);
+    console.log('📧 Order data:', {
+      orderNumber: order.orderNumber,
+      email: order.user.email,
+      qrCodeUrl: qrCodeUrl,
+      activationCode: order.activationCode,
+      smdpServer: order.smdpServer,
+    });
+
+    await this.emailService.sendOrderCompletionEmail(
+      order.user.email,
+      orderData,
+    );
+  }
+
+  async setEmailLogo(logoUrl: string): Promise<void> {
+    this.emailService.setLogoUrl(logoUrl);
+    console.log('🎨 Email logo set to:', logoUrl);
+  }
+
+  async testQrCodeGeneration(qrText: string, email: string): Promise<void> {
+    console.log('🧪 Testing QR code generation with text:', qrText);
+
+    const testOrderData = {
+      orderNumber: 'TEST-123456',
+      packageName: 'Test Package',
+      dataVolume: '1GB',
+      validityDays: 7,
+      amount: 10.0,
+      currency: 'USD',
+      qrCodeUrl: undefined, // Force generation
+      qrCodeText: qrText,
+      logoUrl: this.emailService.getLogoUrl(),
+    };
+
+    await this.emailService.sendOrderCompletionEmail(email, testOrderData);
+    console.log('✅ Test email sent to:', email);
+  }
+
+  async debugQrCodeGeneration(): Promise<any> {
+    const QRCode = require('qrcode');
+    const testText = 'LPA:1$smdp.io$K2-1JL898-DKUTDC';
+
+    try {
+      console.log('🔍 Testing QR code generation directly...');
+      const qrDataUrl = await QRCode.toDataURL(testText, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      });
+
+      return {
+        success: true,
+        testText: testText,
+        qrDataUrlLength: qrDataUrl.length,
+        qrDataUrlPreview: qrDataUrl.substring(0, 100) + '...',
+        message: 'QR code generation working correctly',
+      };
+    } catch (error) {
+      console.log('❌ QR code generation failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        message: 'QR code generation failed',
+      };
+    }
+  }
+
+  async generateTestHtml(): Promise<any> {
+    const QRCode = require('qrcode');
+    const testText = 'LPA:1$smdp.io$K2-1JL898-DKUTDC';
+
+    try {
+      const qrDataUrl = await QRCode.toDataURL(testText, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      });
+
+      const testHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QR Code Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .qr-container { text-align: center; margin: 20px 0; }
+        .qr-code { max-width: 200px; height: auto; }
+        .info { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>QR Code Test</h1>
+    <div class="info">
+        <strong>Test Text:</strong> ${testText}<br>
+        <strong>Data URL Length:</strong> ${qrDataUrl.length} characters<br>
+        <strong>Data URL Preview:</strong> ${qrDataUrl.substring(0, 100)}...
+    </div>
+    <div class="qr-container">
+        <h3>Generated QR Code:</h3>
+        <img src="${qrDataUrl}" alt="QR Code" class="qr-code" />
+        <p>If you can see the QR code above, the generation is working!</p>
+    </div>
+</body>
+</html>`;
+
+      return {
+        success: true,
+        html: testHtml,
+        message: 'Test HTML generated successfully',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        message: 'Failed to generate test HTML',
+      };
+    }
   }
 }
