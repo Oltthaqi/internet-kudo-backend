@@ -365,4 +365,42 @@ export class OrdersController {
     await this.ordersService.processTopup(id);
     return { message: 'Top-up processing initiated' };
   }
+
+  @ApiOperation({ summary: 'Set logo URL for email templates' })
+  @ApiResponse({ status: 200, description: 'Logo URL set successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Post('email/logo')
+  @Roles(Role.ADMIN)
+  async setEmailLogo(@Body() body: { logoUrl: string }) {
+    await this.ordersService.setEmailLogo(body.logoUrl);
+    return { message: 'Logo URL set successfully', logoUrl: body.logoUrl };
+  }
+
+  @ApiOperation({ summary: 'Test QR code generation' })
+  @ApiResponse({ status: 200, description: 'QR code test completed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Post('email/test-qr')
+  @Roles(Role.ADMIN)
+  async testQrCode(@Body() body: { qrText: string; email: string }) {
+    await this.ordersService.testQrCodeGeneration(body.qrText, body.email);
+    return { message: 'QR code test email sent' };
+  }
+
+  @ApiOperation({ summary: 'Debug QR code generation' })
+  @ApiResponse({ status: 200, description: 'QR code debug info' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Get('email/debug-qr')
+  @Roles(Role.ADMIN)
+  async debugQrCode() {
+    return await this.ordersService.debugQrCodeGeneration();
+  }
+
+  @ApiOperation({ summary: 'Generate test HTML with QR code' })
+  @ApiResponse({ status: 200, description: 'Test HTML generated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Get('email/test-html')
+  @Roles(Role.ADMIN)
+  async testHtml() {
+    return await this.ordersService.generateTestHtml();
+  }
 }

@@ -1,0 +1,295 @@
+<html lang='sq'>
+  <head>
+    <meta charset='UTF-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>Kartela juaj eSIM është gati!</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f8f9fa;
+      }
+      .email-container {
+        background-color: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+      .logo {
+        width: 60px;
+        height: 60px;
+        margin: 0 auto 20px;
+        background-color: rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+      }
+      .logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        border-radius: 50%;
+      }
+      .success-icon {
+        width: 60px;
+        height: 60px;
+        margin: 0 auto 20px;
+        background-color: #10b981;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+      }
+      .title {
+        font-size: 28px;
+        font-weight: bold;
+        margin: 0;
+      }
+      .subtitle {
+        font-size: 16px;
+        margin: 10px 0 0;
+        opacity: 0.9;
+      }
+      .content {
+        padding: 30px;
+      }
+      .order-details {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid #e9ecef;
+      }
+      .detail-row:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+      }
+      .detail-label {
+        font-weight: 600;
+        color: #6c757d;
+      }
+      .detail-value {
+        color: #212529;
+      }
+      .qr-section {
+        text-align: center;
+        margin: 30px 0;
+        padding: 20px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+      }
+      .qr-title {
+        font-size: 20px;
+        font-weight: bold;
+        color: #212529;
+        margin: 0 0 10px;
+      }
+      .qr-instructions {
+        color: #6c757d;
+        margin: 0 0 20px;
+      }
+      .qr-code-container {
+        display: inline-block;
+        padding: 20px;
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .qr-code {
+        max-width: 200px;
+        height: auto;
+        display: block;
+      }
+      .qr-code-text {
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        color: #6c757d;
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 4px;
+        word-break: break-all;
+        max-width: 200px;
+      }
+      .instructions {
+        margin: 30px 0;
+      }
+      .instruction-item {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 15px;
+      }
+      .step-number {
+        width: 30px;
+        height: 30px;
+        background-color: #667eea;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        margin-right: 15px;
+        flex-shrink: 0;
+      }
+      .instruction-text {
+        flex: 1;
+        color: #495057;
+      }
+      .footer {
+        background-color: #f8f9fa;
+        padding: 20px;
+        text-align: center;
+        color: #6c757d;
+        font-size: 14px;
+      }
+      .footer a {
+        color: #667eea;
+        text-decoration: none;
+      }
+      .debug-info {
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 10px 0;
+        font-size: 12px;
+        color: #856404;
+      }
+    </style>
+  </head>
+  <body>
+    <div class='email-container'>
+      <!-- Header -->
+      <div class='header'>
+        {{#if logoUrl}}
+          <div class='logo'>
+            <img src='{{logoUrl}}' alt='Logo' />
+          </div>
+        {{else}}
+          <div class='success-icon'>✓</div>
+        {{/if}}
+        <h1 class='title'>Kartela juaj eSIM është gati!</h1>
+        <p class='subtitle'>Faleminderit për blerjen tuaj</p>
+      </div>
+
+      <!-- Content -->
+      <div class='content'>
+        <p>Përshëndetje,</p>
+        <p>Kartela juaj eSIM është përgatitur me sukses dhe është gati për
+          përdorim. Më poshtë gjeni detajet e porosisë suaj dhe kodin QR për
+          instalimin.</p>
+
+        <!-- Order Details -->
+        <div class='order-details'>
+          <h3 style='margin-top: 0; color: #212529;'>Detajet e Porosisë</h3>
+          <div class='detail-row'>
+            <span class='detail-label'>Numri i Porosisë:</span>
+            <span class='detail-value'>{{orderNumber}}</span>
+          </div>
+          <div class='detail-row'>
+            <span class='detail-label'>Paketa:</span>
+            <span class='detail-value'>{{packageName}}</span>
+          </div>
+          <div class='detail-row'>
+            <span class='detail-label'>Vëllimi i të Dhënave:</span>
+            <span class='detail-value'>{{dataVolume}}</span>
+          </div>
+          <div class='detail-row'>
+            <span class='detail-label'>Ditët e Vlefshmërisë:</span>
+            <span class='detail-value'>{{validityDays}} ditë</span>
+          </div>
+          <div class='detail-row'>
+            <span class='detail-label'>Shuma:</span>
+            <span class='detail-value'>{{amount}} {{currency}}</span>
+          </div>
+        </div>
+
+        <!-- QR Code Section -->
+        <div class='qr-section'>
+          <h3 class='qr-title'>Kodi QR për Instalimin e Kartelës</h3>
+          <p class='qr-instructions'>Skanoni këtë kod QR me pajisjen tuaj për të
+            instaluar kartelën eSIM:</p>
+          <div class='qr-code-container'>
+            {{#if qrCodeUrl}}
+              <img
+                src='{{qrCodeUrl}}'
+                alt='Kodi QR i eSIM-it'
+                class='qr-code'
+              />
+              <p style='font-size: 12px; color: #666; margin-top: 10px;'>
+                QR Code Image Generated ({{qrCodeUrl.length}}
+                characters)
+              </p>
+            {{else}}
+              <div class='qr-code-text'>{{qrCodeText}}</div>
+              <p style='font-size: 12px; color: #666; margin-top: 10px;'>
+                QR Code Text Fallback
+              </p>
+            {{/if}}
+          </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class='instructions'>
+          <h3 style='color: #212529; margin-bottom: 20px;'>Udhëzimet për
+            Instalimin</h3>
+
+          <div class='instruction-item'>
+            <div class='step-number'>1</div>
+            <div class='instruction-text'>
+              <strong>Hapni Settings në pajisjen tuaj</strong><br />
+              Shkoni te Settings → Mobile Data → Add eSIM
+            </div>
+          </div>
+
+          <div class='instruction-item'>
+            <div class='step-number'>2</div>
+            <div class='instruction-text'>
+              <strong>Skanoni kodin QR</strong><br />
+              Përdorni kamerën e pajisjes suaj për të skanuar kodin QR të
+              mësipërm
+            </div>
+          </div>
+
+          <div class='instruction-item'>
+            <div class='step-number'>3</div>
+            <div class='instruction-text'>
+              <strong>Ndiqni hapat në ekran</strong><br />
+              Ndjeki udhëzimet që shfaqen në pajisjen tuaj për të përfunduar
+              instalimin
+            </div>
+          </div>
+        </div>
+
+        <p>Nëse keni ndonjë pyetje ose nevojë për ndihmë, mos hezitoni të na
+          kontaktoni.</p>
+        <p>Faleminderit për besimin tuaj!</p>
+      </div>
+
+      <!-- Footer -->
+      <div class='footer'>
+        <p>© 2024 eSIM Store. Të gjitha të drejtat e rezervuara.</p>
+        <p><a href='mailto:support@esimstore.com'>support@esimstore.com</a></p>
+      </div>
+    </div>
+  </body>
+</html>
