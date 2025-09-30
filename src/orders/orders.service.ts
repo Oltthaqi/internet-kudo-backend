@@ -306,7 +306,30 @@ export class OrdersService {
       order: { createdAt: 'DESC' },
     });
 
-    return orders.map((order) => this.toResponseDto(order));
+    // Convert to DTOs first (this populates individualUsage)
+    const orderDtos = orders.map((order) => this.toResponseDto(order));
+
+    // Sort orders by most recent individualUsage lastUsageDate
+    orderDtos.sort((a, b) => {
+      // Get most recent lastUsageDate from individualUsage for order A
+      const aLatestDate = a.usage?.individualUsage?.[0]?.lastUsageDate
+        ? new Date(a.usage.individualUsage[0].lastUsageDate).getTime()
+        : a.usage?.lastSyncedAt
+          ? new Date(a.usage.lastSyncedAt).getTime()
+          : new Date(a.createdAt).getTime();
+
+      // Get most recent lastUsageDate from individualUsage for order B
+      const bLatestDate = b.usage?.individualUsage?.[0]?.lastUsageDate
+        ? new Date(b.usage.individualUsage[0].lastUsageDate).getTime()
+        : b.usage?.lastSyncedAt
+          ? new Date(b.usage.lastSyncedAt).getTime()
+          : new Date(b.createdAt).getTime();
+
+      // Sort descending (most recent first)
+      return bLatestDate - aLatestDate;
+    });
+
+    return orderDtos;
   }
 
   async getOrdersByUserId(userId: string): Promise<OrderResponseDto[]> {
@@ -344,7 +367,30 @@ export class OrdersService {
       usageRecords,
     );
 
-    return groupedOrders.map((order) => this.toResponseDto(order));
+    // Convert to DTOs first (this populates individualUsage)
+    const orderDtos = groupedOrders.map((order) => this.toResponseDto(order));
+
+    // Sort orders by most recent individualUsage lastUsageDate
+    orderDtos.sort((a, b) => {
+      // Get most recent lastUsageDate from individualUsage for order A
+      const aLatestDate = a.usage?.individualUsage?.[0]?.lastUsageDate
+        ? new Date(a.usage.individualUsage[0].lastUsageDate).getTime()
+        : a.usage?.lastSyncedAt
+          ? new Date(a.usage.lastSyncedAt).getTime()
+          : new Date(a.createdAt).getTime();
+
+      // Get most recent lastUsageDate from individualUsage for order B
+      const bLatestDate = b.usage?.individualUsage?.[0]?.lastUsageDate
+        ? new Date(b.usage.individualUsage[0].lastUsageDate).getTime()
+        : b.usage?.lastSyncedAt
+          ? new Date(b.usage.lastSyncedAt).getTime()
+          : new Date(b.createdAt).getTime();
+
+      // Sort descending (most recent first)
+      return bLatestDate - aLatestDate;
+    });
+
+    return orderDtos;
   }
 
   async findOne(id: string): Promise<Order> {
@@ -887,16 +933,57 @@ export class OrdersService {
           totalDataAllowed - totalDataUsed,
         );
 
-        // Sort all usage records by lastUsageDate (latest first, null last)
-        const sortedUsageRecords = [...usageRecords].sort((a, b) => {
-          const dateA = a.lastUsageDate ? new Date(a.lastUsageDate) : null;
-          const dateB = b.lastUsageDate ? new Date(b.lastUsageDate) : null;
+        // Filter and sort usage records
+        // 1. Filter: Only include active packages with remaining data > 0
+        const activeUsageRecords = usageRecords.filter((usage) => {
+          const hasRemainingData = Number(usage.totalDataRemaining) > 0;
+          const isActivePackage = usage.isActive === true;
+          return isActivePackage && hasRemainingData;
+        });
+
+        // 2. Sort by lastUsageDate (latest first), fallback to lastSyncedAt
+        // This ensures individualUsage[0] is always the most recently used eSIM
+        const sortedUsageRecords = [...activeUsageRecords].sort((a, b) => {
+          // Try lastUsageDate first, fallback to lastSyncedAt
+          const dateA = a.lastUsageDate
+            ? new Date(a.lastUsageDate)
+            : a.lastSyncedAt
+              ? new Date(a.lastSyncedAt)
+              : null;
+          const dateB = b.lastUsageDate
+            ? new Date(b.lastUsageDate)
+            : b.lastSyncedAt
+              ? new Date(b.lastSyncedAt)
+              : null;
 
           if (!dateA && !dateB) return 0;
           if (!dateA) return 1; // null dates go to end
           if (!dateB) return -1; // null dates go to end
           return dateB.getTime() - dateA.getTime(); // latest first
         });
+
+        // 3. If no active records with data, include all records sorted by lastUsageDate/lastSyncedAt
+        // (This ensures we always show something, even if all are exhausted)
+        const finalSortedRecords =
+          sortedUsageRecords.length > 0
+            ? sortedUsageRecords
+            : [...usageRecords].sort((a, b) => {
+                // Try lastUsageDate first, fallback to lastSyncedAt
+                const dateA = a.lastUsageDate
+                  ? new Date(a.lastUsageDate)
+                  : a.lastSyncedAt
+                    ? new Date(a.lastSyncedAt)
+                    : null;
+                const dateB = b.lastUsageDate
+                  ? new Date(b.lastUsageDate)
+                  : b.lastSyncedAt
+                    ? new Date(b.lastSyncedAt)
+                    : null;
+                if (!dateA && !dateB) return 0;
+                if (!dateA) return 1;
+                if (!dateB) return -1;
+                return dateB.getTime() - dateA.getTime();
+              });
 
         // Create a consolidated usage object
         const consolidatedUsage = {
@@ -908,7 +995,7 @@ export class OrdersService {
           usagePercentage:
             totalDataAllowed > 0 ? (totalDataUsed / totalDataAllowed) * 100 : 0,
           isActive: usageRecords.some((u) => u.isActive),
-          status: totalDataRemaining <= 0 ? 'exhausted' : 'active',
+          status: totalDataRemaining <= 0 ? 'in-active' : 'active',
           lastSyncedAt: usageRecords.reduce((latest, usage) => {
             if (!latest || !usage.lastSyncedAt) return latest;
             if (!usage.lastSyncedAt) return latest;
@@ -916,8 +1003,9 @@ export class OrdersService {
               ? usage.lastSyncedAt
               : latest;
           }, usageRecords[0].lastSyncedAt),
-          // Keep individual usage records for detailed breakdown (sorted by lastUsageDate)
-          individualUsage: sortedUsageRecords.map((usage) => ({
+          // Keep individual usage records for detailed breakdown
+          // Sorted by lastUsageDate, filtered to active with data > 0
+          individualUsage: finalSortedRecords.map((usage) => ({
             id: usage.id,
             orderId: usage.orderId,
             packageTemplateId:
@@ -936,6 +1024,9 @@ export class OrdersService {
             isActive: usage.isActive,
             status: usage.status,
             lastSyncedAt: usage.lastSyncedAt,
+            lastUsageDate: usage.lastUsageDate, // ✅ From Usage entity
+            iccid: usage.iccid, // ✅ From Usage entity
+            activationCode: usage.order?.activationCode || null, // ✅ From Order entity
           })),
         };
 
