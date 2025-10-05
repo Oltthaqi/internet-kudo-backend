@@ -9,7 +9,10 @@ import {
   UseGuards,
   Request,
   BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request as ExpressRequest } from 'express';
 import {
   ApiTags,
@@ -402,5 +405,34 @@ export class OrdersController {
   @Roles(Role.ADMIN)
   async testHtml() {
     return await this.ordersService.generateTestHtml();
+  }
+
+  @ApiOperation({ summary: 'Upload logo for email templates' })
+  @ApiResponse({ status: 200, description: 'Logo uploaded successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Post('email/upload-logo')
+  @UseInterceptors(FileInterceptor('logo'))
+  @Roles(Role.ADMIN)
+  async uploadLogo(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('File must be an image');
+    }
+
+    // Convert file to base64 data URL
+    const base64 = file.buffer.toString('base64');
+    const dataUrl = `data:${file.mimetype};base64,${base64}`;
+
+    await this.ordersService.setEmailLogo(dataUrl);
+
+    return {
+      message: 'Logo uploaded successfully',
+      logoSize: file.size,
+      logoType: file.mimetype,
+      logoUrl: dataUrl.substring(0, 100) + '...',
+    };
   }
 }

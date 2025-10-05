@@ -9,6 +9,7 @@ import { UsersModule } from '../users/users.module';
 import { EsimsModule } from '../esims/esims.module';
 import { EmailModule } from '../email/email.module';
 import { UsageModule } from '../usage/usage.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
