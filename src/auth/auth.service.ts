@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -31,6 +32,7 @@ import { EmailService } from 'src/email/email.service';
 import { CreateUserGoogleDto } from 'src/users/dto/create-user-google-oauth.dto';
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly DEFAULT_ACCESS_TOKEN_EXPIRATION = 12 * 60 * 60; // 12 hours to seconds
   private readonly DEFAULT_REFRESH_TOKEN_EXPIRATION = 24 * 60 * 60; // 24 hours to seconds
   private readonly kms: AWS.KMS;
@@ -416,27 +418,58 @@ export class AuthService {
     return true;
   }
 
-  async loginGoogle(user: UsersEntity): Promise<object> {
+  async loginGoogle(user: UsersEntity): Promise<TokenDto> {
+    this.logger.log('[LOGIN GOOGLE] Starting Google login process');
+    
     if (!user) {
+      this.logger.error('[LOGIN GOOGLE] User object is null/undefined');
       throw new UnauthorizedException('User not found in request');
     }
-    const existingUser = await this.userService.getUserByEmailVerified(
-      user.email,
-    );
+
+    this.logger.debug(`[LOGIN GOOGLE] User from OAuth: email=${user.email}, id=${user.id}, verified=${user.is_verified}`);
+    
+    // Get the user (Google users are automatically verified)
+    const existingUser = await this.userService.getUserByEmail(user.email);
 
     if (!existingUser) {
-      throw new NotFoundException('User does not exists or is not verified');
+      this.logger.error(`[LOGIN GOOGLE] User not found in database: ${user.email}`);
+      throw new NotFoundException('User does not exist');
     }
 
-    return this.getSessionTokens(existingUser);
+    this.logger.log(`[LOGIN GOOGLE] User found in database: ${existingUser.email} (ID: ${existingUser.id}, Verified: ${existingUser.is_verified})`);
+
+    // Auto-verify Google-authenticated users if not already verified
+    if (!existingUser.is_verified) {
+      this.logger.log(`[LOGIN GOOGLE] Auto-verifying user: ${existingUser.id}`);
+      await this.userService.updateUserVerification(existingUser.id);
+      existingUser.is_verified = true;
+      this.logger.log(`[LOGIN GOOGLE] User verified successfully`);
+    }
+
+    this.logger.log('[LOGIN GOOGLE] Generating session tokens');
+    const tokens = await this.getSessionTokens(existingUser);
+    this.logger.log('[LOGIN GOOGLE] Session tokens generated successfully');
+    
+    return tokens;
   }
 
   async validateGoogleUser(
     googleUser: CreateUserGoogleDto,
   ): Promise<UsersEntity> {
+    this.logger.log(`[VALIDATE GOOGLE USER] Validating Google user: ${googleUser.email}`);
+    this.logger.debug(`[VALIDATE GOOGLE USER] User data: firstName=${googleUser.first_name}, lastName=${googleUser.last_name}, verified=${googleUser.is_verified}`);
+    
     const user = await this.userService.getUserByEmail(googleUser.email);
 
-    if (user) return user;
-    return await this.userService.register(googleUser);
+    if (user) {
+      this.logger.log(`[VALIDATE GOOGLE USER] Existing user found: ${user.email} (ID: ${user.id})`);
+      return user;
+    }
+
+    this.logger.log(`[VALIDATE GOOGLE USER] New user, registering: ${googleUser.email}`);
+    const newUser = await this.userService.register(googleUser);
+    this.logger.log(`[VALIDATE GOOGLE USER] New user registered: ${newUser.email} (ID: ${newUser.id})`);
+    
+    return newUser;
   }
 }

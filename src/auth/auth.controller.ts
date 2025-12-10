@@ -8,8 +8,14 @@ import {
   UnauthorizedException,
   UseGuards,
   Request,
+  Res,
+  Query,
+  Logger,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Response } from 'express';
 import { AuthService } from './auth.service';
+import { ConfigService } from '@nestjs/config';
 import { VerifyUserDto } from './dto/verify-user.dto';
 import LoginUserDto from './dto/login-user.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -24,12 +30,17 @@ import { JwtRolesGuard } from './utils/jwt‑roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/users/enums/role.enum';
 import { GoogleAuthGuard } from './utils/google-auth.guard';
+import TokenDto from './dto/token.dto';
 
+@ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly authService: AuthService,
     private readonly usersService: UsersService,
+    private readonly configService: ConfigService,
   ) {}
 
   @Post('sign-up')
@@ -99,16 +110,129 @@ export class AuthController {
     return this.authService.getSessionTokens(user);
   }
 
-  @UseGuards(GoogleAuthGuard)
   @Get('google/login')
-  async googleLogin(): Promise<void> {}
-
   @UseGuards(GoogleAuthGuard)
-  @Get('google/callback')
-  async googleLoginCallback(@Request() req: any): Promise<object> {
-    const user = req.user as UsersEntity;
+  @ApiOperation({ summary: 'Initiate Google OAuth login' })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirects to Google OAuth consent screen',
+  })
+  async googleLogin(@Query('mobile') mobile?: string): Promise<void> {
+    this.logger.log(`[GOOGLE LOGIN] Initiated - mobile=${mobile}`);
+    // This endpoint initiates the Google OAuth flow
+    // Users are redirected to Google's consent screen
+    // If mobile=true is passed, the callback will redirect to mobile app
+    // The mobile parameter is passed through Google's state parameter
+  }
 
-    return await this.authService.loginGoogle(user);
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Google OAuth callback endpoint' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns access token and refresh token (web) or redirects to mobile app',
+  })
+  async googleLoginCallback(
+    @Request() req: any,
+    @Res() res: Response,
+    @Query('state') state?: string,
+    @Query('format') format?: string,
+  ): Promise<void | object> {
+    this.logger.log('[GOOGLE CALLBACK] Callback endpoint hit');
+    this.logger.debug(`[GOOGLE CALLBACK] Query params: state=${state}, format=${format}`);
+    this.logger.debug(`[GOOGLE CALLBACK] Full query: ${JSON.stringify(req.query)}`);
+
+    const user = req.user as UsersEntity;
+    if (!user) {
+      this.logger.error('[GOOGLE CALLBACK] No user found in request');
+      throw new UnauthorizedException('User not found in request');
+    }
+
+    this.logger.log(`[GOOGLE CALLBACK] User found: ${user.email} (ID: ${user.id})`);
+
+    const tokens = await this.authService.loginGoogle(user);
+    this.logger.log('[GOOGLE CALLBACK] Tokens generated successfully');
+
+    // Get mobile redirect URL from config
+    const mobileRedirectUrl = this.configService.get<string>(
+      'GOOGLE_MOBILE_REDIRECT_URL',
+    );
+    const callbackUrl = this.configService.get<string>('GOOGLE_CALLBACK_URL');
+
+    this.logger.debug(`[GOOGLE CALLBACK] Config - callbackUrl: ${callbackUrl}`);
+    this.logger.debug(`[GOOGLE CALLBACK] Config - mobileRedirectUrl: ${mobileRedirectUrl || 'NOT SET'}`);
+
+    // Force JSON format if requested (for web API calls)
+    if (format === 'json') {
+      this.logger.log('[GOOGLE CALLBACK] Format=json requested, returning JSON');
+      return res.json(tokens);
+    }
+
+    // Check if this is a mobile request
+    const userAgent = req.headers['user-agent'] || '';
+    const referer = req.headers.referer || '';
+    const origin = req.headers.origin || '';
+
+    this.logger.debug(`[GOOGLE CALLBACK] Request headers:`);
+    this.logger.debug(`  - User-Agent: ${userAgent}`);
+    this.logger.debug(`  - Referer: ${referer}`);
+    this.logger.debug(`  - Origin: ${origin}`);
+
+    // Mobile detection checks
+    const stateCheck = state === 'mobile';
+    const queryMobileCheck = req.query?.mobile === 'true';
+    const userAgentExpoCheck = userAgent.includes('Expo');
+    const userAgentMobileCheck = userAgent.includes('Mobile');
+    const userAgentReactNativeCheck = userAgent.includes('ReactNative');
+    const refererExpCheck = referer.includes('exp://');
+    const refererAppCheck = referer.includes('internetkudo://') || referer.includes('yourapp://');
+
+    this.logger.debug(`[GOOGLE CALLBACK] Mobile detection checks:`);
+    this.logger.debug(`  - state === 'mobile': ${stateCheck}`);
+    this.logger.debug(`  - query.mobile === 'true': ${queryMobileCheck}`);
+    this.logger.debug(`  - User-Agent includes 'Expo': ${userAgentExpoCheck}`);
+    this.logger.debug(`  - User-Agent includes 'Mobile': ${userAgentMobileCheck}`);
+    this.logger.debug(`  - User-Agent includes 'ReactNative': ${userAgentReactNativeCheck}`);
+    this.logger.debug(`  - Referer includes 'exp://': ${refererExpCheck}`);
+    this.logger.debug(`  - Referer includes app scheme: ${refererAppCheck}`);
+
+    const isMobileRequest =
+      stateCheck ||
+      queryMobileCheck ||
+      userAgentExpoCheck ||
+      userAgentMobileCheck ||
+      userAgentReactNativeCheck ||
+      refererExpCheck ||
+      refererAppCheck;
+
+    this.logger.log(`[GOOGLE CALLBACK] Mobile request detected: ${isMobileRequest}`);
+
+    // If mobile redirect URL is configured and this is a mobile request, redirect to app
+    if (mobileRedirectUrl && isMobileRequest) {
+      this.logger.log(`[GOOGLE CALLBACK] Redirecting to mobile app: ${mobileRedirectUrl}`);
+      
+      // Redirect to mobile app with tokens in URL
+      const redirectUrl = new URL(mobileRedirectUrl);
+      redirectUrl.searchParams.set('accessToken', tokens.accessToken);
+      redirectUrl.searchParams.set('refreshToken', tokens.refreshToken);
+      redirectUrl.searchParams.set('success', 'true');
+
+      const finalRedirectUrl = redirectUrl.toString();
+      this.logger.debug(`[GOOGLE CALLBACK] Final redirect URL (without tokens in log for security)`);
+      this.logger.log(`[GOOGLE CALLBACK] Redirecting to mobile app with tokens in URL params`);
+
+      return res.redirect(finalRedirectUrl);
+    }
+
+    // Default: return JSON for web requests
+    if (!mobileRedirectUrl) {
+      this.logger.warn('[GOOGLE CALLBACK] GOOGLE_MOBILE_REDIRECT_URL not configured, returning JSON');
+    } else if (!isMobileRequest) {
+      this.logger.log('[GOOGLE CALLBACK] Not a mobile request, returning JSON');
+    }
+
+    return res.json(tokens);
   }
 
   @UseGuards(JwtRolesGuard)
