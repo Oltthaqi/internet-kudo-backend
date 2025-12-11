@@ -376,19 +376,12 @@ export class AuthService {
       this.logger.warn(
         '[LOGIN GOOGLE] KMS not configured, falling back to HS256 signing with JWT_SECRET',
       );
-      // expiration is an epoch seconds value; compute ttl
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      const ttlSeconds = Math.max(expiration - nowSeconds, 1);
       return this.jwtService.sign(
-        {
-          ...data,
-          iat: payload.iat,
-          exp: payload.exp,
-        },
+        payload, // includes exp already
         {
           algorithm: 'HS256',
           secret: hsSecret,
-          expiresIn: ttlSeconds,
+          // do not set expiresIn since exp already present
         },
       );
     }
