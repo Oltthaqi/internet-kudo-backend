@@ -364,9 +364,32 @@ export class AuthService {
     const signingAlgorithm =
       this.configService.get<string>('SIGNING_ALGORITHM');
 
+    // Fallback: if KMS is not configured, sign with JWT_SECRET using HS256
     if (!keyId || !signingAlgorithm) {
-      throw new Error(
-        'KMS_KEY_ID or SIGNING_ALGORITHM is not defined in the configuration',
+      const hsSecret = this.configService.get<string>('JWT_SECRET');
+      if (!hsSecret) {
+        throw new Error(
+          'KMS_KEY_ID or SIGNING_ALGORITHM is not defined in the configuration',
+        );
+      }
+
+      this.logger.warn(
+        '[LOGIN GOOGLE] KMS not configured, falling back to HS256 signing with JWT_SECRET',
+      );
+      // expiration is an epoch seconds value; compute ttl
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const ttlSeconds = Math.max(expiration - nowSeconds, 1);
+      return this.jwtService.sign(
+        {
+          ...data,
+          iat: payload.iat,
+          exp: payload.exp,
+        },
+        {
+          algorithm: 'HS256',
+          secret: hsSecret,
+          expiresIn: ttlSeconds,
+        },
       );
     }
 
