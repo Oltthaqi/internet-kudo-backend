@@ -30,8 +30,10 @@ import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import { EmailService } from 'src/email/email.service';
 import { CreateUserGoogleDto } from 'src/users/dto/create-user-google-oauth.dto';
+import { CreateUserAppleDto } from 'src/users/dto/create-user-apple-oauth.dto';
 import { Role } from 'src/users/enums/role.enum';
 import { randomBytes } from 'crypto';
+import appleSignin from 'apple-signin-auth';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -438,23 +440,29 @@ export class AuthService {
 
   async loginGoogle(user: UsersEntity): Promise<TokenDto> {
     this.logger.log('[LOGIN GOOGLE] Starting Google login process');
-    
+
     if (!user) {
       this.logger.error('[LOGIN GOOGLE] User object is null/undefined');
       throw new UnauthorizedException('User not found in request');
     }
 
-    this.logger.debug(`[LOGIN GOOGLE] User from OAuth: email=${user.email}, id=${user.id}, verified=${user.is_verified}`);
-    
+    this.logger.debug(
+      `[LOGIN GOOGLE] User from OAuth: email=${user.email}, id=${user.id}, verified=${user.is_verified}`,
+    );
+
     // Get the user (Google users are automatically verified)
     const existingUser = await this.userService.getUserByEmail(user.email);
 
     if (!existingUser) {
-      this.logger.error(`[LOGIN GOOGLE] User not found in database: ${user.email}`);
+      this.logger.error(
+        `[LOGIN GOOGLE] User not found in database: ${user.email}`,
+      );
       throw new NotFoundException('User does not exist');
     }
 
-    this.logger.log(`[LOGIN GOOGLE] User found in database: ${existingUser.email} (ID: ${existingUser.id}, Verified: ${existingUser.is_verified})`);
+    this.logger.log(
+      `[LOGIN GOOGLE] User found in database: ${existingUser.email} (ID: ${existingUser.id}, Verified: ${existingUser.is_verified})`,
+    );
 
     // Auto-verify Google-authenticated users if not already verified
     if (!existingUser.is_verified) {
@@ -467,20 +475,26 @@ export class AuthService {
     this.logger.log('[LOGIN GOOGLE] Generating session tokens');
     const tokens = await this.getSessionTokens(existingUser);
     this.logger.log('[LOGIN GOOGLE] Session tokens generated successfully');
-    
+
     return tokens;
   }
 
   async validateGoogleUser(
     googleUser: CreateUserGoogleDto,
   ): Promise<UsersEntity> {
-    this.logger.log(`[VALIDATE GOOGLE USER] Validating Google user: ${googleUser.email}`);
-    this.logger.debug(`[VALIDATE GOOGLE USER] User data: firstName=${googleUser.first_name}, lastName=${googleUser.last_name}, verified=${googleUser.is_verified}`);
-    
+    this.logger.log(
+      `[VALIDATE GOOGLE USER] Validating Google user: ${googleUser.email}`,
+    );
+    this.logger.debug(
+      `[VALIDATE GOOGLE USER] User data: firstName=${googleUser.first_name}, lastName=${googleUser.last_name}, verified=${googleUser.is_verified}`,
+    );
+
     const user = await this.userService.getUserByEmail(googleUser.email);
 
     if (user) {
-      this.logger.log(`[VALIDATE GOOGLE USER] Existing user found: ${user.email} (ID: ${user.id})`);
+      this.logger.log(
+        `[VALIDATE GOOGLE USER] Existing user found: ${user.email} (ID: ${user.id})`,
+      );
       // Ensure role is set; if missing, set and persist
       if (!(user as any).role) {
         (user as any).role = Role.USER;
@@ -491,7 +505,9 @@ export class AuthService {
       return user;
     }
 
-    this.logger.log(`[VALIDATE GOOGLE USER] New user, registering: ${googleUser.email}`);
+    this.logger.log(
+      `[VALIDATE GOOGLE USER] New user, registering: ${googleUser.email}`,
+    );
     // Generate a random password to satisfy registration validation
     const randomPassword = randomBytes(16).toString('hex');
     const newUser = await this.userService.register({
@@ -500,8 +516,145 @@ export class AuthService {
       is_verified: true,
       role: Role.USER,
     });
-    this.logger.log(`[VALIDATE GOOGLE USER] New user registered: ${newUser.email} (ID: ${newUser.id})`);
-    
+    this.logger.log(
+      `[VALIDATE GOOGLE USER] New user registered: ${newUser.email} (ID: ${newUser.id})`,
+    );
+
+    return newUser;
+  }
+
+  async loginApple(identityToken: string): Promise<TokenDto> {
+    this.logger.log('[LOGIN APPLE] Starting Apple login process');
+
+    try {
+      // Verify the Apple identity token
+      const clientId = this.configService.get<string>('APPLE_CLIENT_ID');
+      if (!clientId) {
+        throw new Error('APPLE_CLIENT_ID is not configured');
+      }
+
+      this.logger.debug(
+        `[LOGIN APPLE] Verifying identity token for clientId: ${clientId}`,
+      );
+
+      const appleUser = await appleSignin.verifyIdToken(identityToken, {
+        audience: clientId, // Your App's Bundle ID / Services ID
+      });
+
+      this.logger.debug(
+        `[LOGIN APPLE] Token verified - User ID: ${appleUser.sub}`,
+      );
+      this.logger.debug(
+        `[LOGIN APPLE] Email: ${appleUser.email || 'Not provided'}`,
+      );
+
+      // email_verified can be a string or boolean in Apple tokens
+      const emailVerified =
+        appleUser.email_verified === true ||
+        appleUser.email_verified === 'true';
+      this.logger.debug(`[LOGIN APPLE] Email verified: ${emailVerified}`);
+
+      // Extract user information from the token
+      // Note: Apple only sends email on the FIRST sign in
+      // Subsequent sign ins only provide the 'sub' (user ID)
+      // Name is NOT included in the token - it's only available in the initial authorization response
+      const email = appleUser.email;
+      const appleUserId = appleUser.sub; // Apple's unique user identifier
+
+      if (!email) {
+        // If email is not in token, try to find user by apple_user_id if we store it
+        // For now, we'll require email on first sign in
+        this.logger.warn(
+          '[LOGIN APPLE] Email not found in token - this may be a subsequent sign in',
+        );
+        throw new BadRequestException(
+          'Email is required for first-time Apple sign in',
+        );
+      }
+
+      // Validate/create user
+      // Note: Apple doesn't provide name in the token, so we use empty strings
+      // If you need the name, you'll need to capture it from the initial authorization response
+      const user = await this.validateAppleUser({
+        email: email,
+        apple_user_id: appleUserId,
+        first_name: '', // Name is not available in the token
+        last_name: '', // Name is not available in the token
+        is_verified: emailVerified, // Apple emails are verified
+        password: '',
+      });
+
+      this.logger.log(
+        `[LOGIN APPLE] User validated/created: ${user.email} (ID: ${user.id})`,
+      );
+
+      // Generate session tokens
+      this.logger.log('[LOGIN APPLE] Generating session tokens');
+      const tokens = await this.getSessionTokens(user);
+      this.logger.log('[LOGIN APPLE] Session tokens generated successfully');
+
+      return tokens;
+    } catch (error) {
+      this.logger.error(`[LOGIN APPLE] Error: ${error.message}`);
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+      throw new UnauthorizedException('Invalid Apple identity token');
+    }
+  }
+
+  async validateAppleUser(appleUser: CreateUserAppleDto): Promise<UsersEntity> {
+    this.logger.log(
+      `[VALIDATE APPLE USER] Validating Apple user: ${appleUser.email}`,
+    );
+    this.logger.debug(
+      `[VALIDATE APPLE USER] User data: firstName=${appleUser.first_name}, lastName=${appleUser.last_name}, appleUserId=${appleUser.apple_user_id}, verified=${appleUser.is_verified}`,
+    );
+
+    // First, try to find user by email
+    let user = await this.userService.getUserByEmail(appleUser.email);
+
+    if (user) {
+      this.logger.log(
+        `[VALIDATE APPLE USER] Existing user found: ${user.email} (ID: ${user.id})`,
+      );
+      // Ensure role is set; if missing, set and persist
+      if (!(user as any).role) {
+        (user as any).role = Role.USER;
+        await this.userService.updateUser(user.id, {
+          role: Role.USER,
+        } as any);
+      }
+      // Auto-verify Apple-authenticated users if not already verified
+      if (!user.is_verified) {
+        this.logger.log(
+          `[VALIDATE APPLE USER] Auto-verifying user: ${user.id}`,
+        );
+        await this.userService.updateUserVerification(user.id);
+        user.is_verified = true;
+      }
+      return user;
+    }
+
+    // New user - register them
+    this.logger.log(
+      `[VALIDATE APPLE USER] New user, registering: ${appleUser.email}`,
+    );
+    // Generate a random password to satisfy registration validation
+    const randomPassword = randomBytes(16).toString('hex');
+    const newUser = await this.userService.register({
+      ...appleUser,
+      password: randomPassword,
+      is_verified: true, // Apple users are automatically verified
+      role: Role.USER,
+    });
+    this.logger.log(
+      `[VALIDATE APPLE USER] New user registered: ${newUser.email} (ID: ${newUser.id})`,
+    );
+
     return newUser;
   }
 }

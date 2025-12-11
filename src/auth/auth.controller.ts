@@ -6,6 +6,7 @@ import {
   Patch,
   Post,
   UnauthorizedException,
+  BadRequestException,
   UseGuards,
   Request,
   Res,
@@ -31,6 +32,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/users/enums/role.enum';
 import { GoogleAuthGuard } from './utils/google-auth.guard';
 import TokenDto from './dto/token.dto';
+import { AppleSignInDto } from './dto/apple-sign-in.dto';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -233,6 +235,37 @@ export class AuthController {
     }
 
     return res.json(tokens);
+  }
+
+  @Post('apple/login')
+  @ApiOperation({ summary: 'Apple Sign In - Verify identity token' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns access token and refresh token after verifying Apple identity token',
+    type: TokenDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid Apple identity token',
+  })
+  async appleLogin(@Body() appleSignInDto: AppleSignInDto): Promise<TokenDto> {
+    this.logger.log('[APPLE LOGIN] Apple sign in request received');
+    
+    if (!appleSignInDto.identityToken) {
+      this.logger.error('[APPLE LOGIN] Identity token is missing');
+      throw new BadRequestException('Identity token is required');
+    }
+
+    try {
+      const tokens = await this.authService.loginApple(
+        appleSignInDto.identityToken,
+      );
+      this.logger.log('[APPLE LOGIN] Apple sign in successful');
+      return tokens;
+    } catch (error) {
+      this.logger.error(`[APPLE LOGIN] Error: ${error.message}`);
+      throw error;
+    }
   }
 
   @UseGuards(JwtRolesGuard)
