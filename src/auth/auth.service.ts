@@ -30,6 +30,8 @@ import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from 'src/users/dto/create-user.dto';
 import { EmailService } from 'src/email/email.service';
 import { CreateUserGoogleDto } from 'src/users/dto/create-user-google-oauth.dto';
+import { Role } from 'src/users/enums/role.enum';
+import { randomBytes } from 'crypto';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -325,7 +327,7 @@ export class AuthService {
           email: user.email,
           fullName: `${user.first_name} ${user.last_name}`,
           is_verified: user.is_verified,
-          // role,
+          role: (user as any).role ?? Role.USER,
         },
         AuthService.getExpirationDate(
           accessTokenExpiration ?? this.DEFAULT_ACCESS_TOKEN_EXPIRATION,
@@ -337,7 +339,7 @@ export class AuthService {
           email: user.email,
           fullName: `${user.first_name} ${user.last_name}`,
           is_verified: user.is_verified,
-          // roles,
+          role: (user as any).role ?? Role.USER,
         },
         AuthService.getExpirationDate(this.DEFAULT_REFRESH_TOKEN_EXPIRATION),
       ),
@@ -479,11 +481,22 @@ export class AuthService {
 
     if (user) {
       this.logger.log(`[VALIDATE GOOGLE USER] Existing user found: ${user.email} (ID: ${user.id})`);
+      // Ensure role is set
+      if (!(user as any).role) {
+        (user as any).role = Role.USER;
+      }
       return user;
     }
 
     this.logger.log(`[VALIDATE GOOGLE USER] New user, registering: ${googleUser.email}`);
-    const newUser = await this.userService.register(googleUser);
+    // Generate a random password to satisfy registration validation
+    const randomPassword = randomBytes(16).toString('hex');
+    const newUser = await this.userService.register({
+      ...googleUser,
+      password: randomPassword,
+      is_verified: true,
+      role: Role.USER,
+    });
     this.logger.log(`[VALIDATE GOOGLE USER] New user registered: ${newUser.email} (ID: ${newUser.id})`);
     
     return newUser;
