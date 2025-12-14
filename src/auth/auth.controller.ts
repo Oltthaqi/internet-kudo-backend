@@ -260,19 +260,45 @@ export class AuthController {
       // For deep links (custom schemes like internet_kudo://), we need to use
       // an HTML page with JavaScript redirect because browsers/mobile apps
       // handle custom schemes better this way
+      // Use window.location.replace() to avoid adding to history and prevent
+      // the browser from treating the URL as a relative path
+      const escapedUrl = finalRedirectUrl
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
       const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Redirecting...</title>
-  <meta http-equiv="refresh" content="0;url=${finalRedirectUrl}">
   <script>
-    window.location.href = ${JSON.stringify(finalRedirectUrl)};
+    // Immediate redirect - execute before page fully loads
+    // This prevents the browser from treating the deep link URL as a relative path
+    (function() {
+      var redirectUrl = ${JSON.stringify(finalRedirectUrl)};
+      // Ensure the URL is treated as absolute (deep links already are)
+      // Use replace() to avoid adding to browser history
+      try {
+        window.location.replace(redirectUrl);
+      } catch (e) {
+        // Fallback to href if replace fails
+        try {
+          window.location.href = redirectUrl;
+        } catch (e2) {
+          // Last resort: try opening in same window
+          try {
+            window.open(redirectUrl, '_self');
+          } catch (e3) {
+            console.error('All redirect methods failed:', e3);
+          }
+        }
+      }
+    })();
   </script>
 </head>
 <body>
   <p>Redirecting to app...</p>
-  <p>If you are not redirected, <a href="${finalRedirectUrl}">click here</a>.</p>
+  <p>If you are not redirected automatically, <a href="${escapedUrl}" onclick="window.location.replace(${JSON.stringify(finalRedirectUrl)}); return false;">click here</a>.</p>
 </body>
 </html>`;
 
