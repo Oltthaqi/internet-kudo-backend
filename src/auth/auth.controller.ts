@@ -257,7 +257,11 @@ export class AuthController {
         `[GOOGLE CALLBACK] Redirecting to mobile app with tokens in URL params`,
       );
 
-      return res.redirect(finalRedirectUrl);
+      // For deep links (custom schemes like internet_kudo://), Express's res.redirect()
+      // may treat them as relative paths. We need to set the Location header directly
+      // to ensure the browser/mobile app recognizes it as an absolute URL
+      res.setHeader('Location', finalRedirectUrl);
+      return res.status(302).send();
     }
 
     // Default: return JSON for web requests
