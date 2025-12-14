@@ -257,11 +257,27 @@ export class AuthController {
         `[GOOGLE CALLBACK] Redirecting to mobile app with tokens in URL params`,
       );
 
-      // For deep links (custom schemes like internet_kudo://), Express's res.redirect()
-      // may treat them as relative paths. We need to set the Location header directly
-      // to ensure the browser/mobile app recognizes it as an absolute URL
-      res.setHeader('Location', finalRedirectUrl);
-      return res.status(302).send();
+      // For deep links (custom schemes like internet_kudo://), we need to use
+      // an HTML page with JavaScript redirect because browsers/mobile apps
+      // handle custom schemes better this way
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Redirecting...</title>
+  <meta http-equiv="refresh" content="0;url=${finalRedirectUrl}">
+  <script>
+    window.location.href = ${JSON.stringify(finalRedirectUrl)};
+  </script>
+</head>
+<body>
+  <p>Redirecting to app...</p>
+  <p>If you are not redirected, <a href="${finalRedirectUrl}">click here</a>.</p>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html');
+      return res.send(html);
     }
 
     // Default: return JSON for web requests
