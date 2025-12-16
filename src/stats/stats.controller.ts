@@ -6,6 +6,10 @@ import {
   MoneyFlowResponseDto,
   UsedCountriesResponseDto,
   TopEsimsResponseDto,
+  CouponStatsDto,
+  EsimStatsDto,
+  OrderStatsDto,
+  UserStatsDto,
 } from './dto/stats-response.dto';
 import { MoneyFlowQueryDto, UsedCountriesQueryDto, TimePeriod } from './dto/stats-query.dto';
 
@@ -70,6 +74,50 @@ export class StatsController {
   })
   async getTopEsims(): Promise<TopEsimsResponseDto> {
     return this.statsService.getTopEsims();
+  }
+
+  @Get('coupons')
+  @ApiOperation({ summary: 'Get coupon statistics' })
+  @ApiResponse({
+    status: 200,
+    description: 'Coupon statistics retrieved successfully',
+    type: CouponStatsDto,
+  })
+  async getCouponStats(): Promise<CouponStatsDto> {
+    return this.statsService.getCouponStats();
+  }
+
+  @Get('esims')
+  @ApiOperation({ summary: 'Get eSIM statistics' })
+  @ApiResponse({
+    status: 200,
+    description: 'eSIM statistics retrieved successfully',
+    type: EsimStatsDto,
+  })
+  async getEsimStats(): Promise<EsimStatsDto> {
+    return this.statsService.getEsimStats();
+  }
+
+  @Get('orders')
+  @ApiOperation({ summary: 'Get order statistics' })
+  @ApiResponse({
+    status: 200,
+    description: 'Order statistics retrieved successfully',
+    type: OrderStatsDto,
+  })
+  async getOrderStats(): Promise<OrderStatsDto> {
+    return this.statsService.getOrderStats();
+  }
+
+  @Get('users')
+  @ApiOperation({ summary: 'Get user statistics' })
+  @ApiResponse({
+    status: 200,
+    description: 'User statistics retrieved successfully',
+    type: UserStatsDto,
+  })
+  async getUserStats(): Promise<UserStatsDto> {
+    return this.statsService.getUserStats();
   }
 }
 
